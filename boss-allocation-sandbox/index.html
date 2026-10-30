@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Allocation Practice Sandbox</title>
+<style>
+:root{font-family:Segoe UI,Arial,sans-serif;color:#1d2939;background:#f3f6fa;font-size:15px}*{box-sizing:border-box}body{margin:0}header{background:#0c4c86;color:white;padding:24px max(18px,calc((100vw - 1150px)/2))}header h1{margin:0;font-size:clamp(24px,4vw,34px)}header p{margin:6px 0 0;color:#dbeafa}main{max-width:1180px;margin:auto;padding:20px 16px 50px}.card{background:white;border:1px solid #e2e8f0;border-radius:13px;padding:20px;margin-bottom:16px;box-shadow:0 2px 8px #132b4b0d}.notice{background:#eef4ff;border-left:4px solid #2563a6;padding:12px 16px;margin-bottom:16px;border-radius:6px}.toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}button{border:0;border-radius:7px;background:#0c4c86;color:white;padding:11px 15px;cursor:pointer;font-weight:600}button:hover{background:#1769ad}button.secondary{background:#eaf0f7;color:#16466d}button.danger{background:#fff0ee;color:#a22525}button:focus-visible,input:focus-visible{outline:3px solid #76b5e9;outline-offset:2px}.scroll{overflow:auto}table{border-collapse:collapse;width:100%;min-width:1050px;font-size:13px}th{background:#0c4c86;color:white;padding:10px 8px;text-align:right;white-space:normal}th:first-child{text-align:left}td{padding:10px 8px;text-align:right;border-bottom:1px solid #e4e9f0;white-space:nowrap}td:first-child{text-align:left}tbody tr{cursor:pointer}tbody tr:hover{background:#edf6ff}tbody tr.selected{background:#dceeff}tfoot td{font-weight:bold;background:#edf3f9;border-top:2px solid #b5c4d6}h2{margin:0 0 15px;font-size:21px}.editor{display:grid;grid-template-columns:repeat(2,minmax(250px,1fr));gap:18px}.field{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:10px}.field label{font-weight:600;flex:1}.field input{width:128px;max-width:48%;padding:9px 10px;border:1px solid #a9b4c2;border-radius:4px;font:inherit;text-align:right}.field input[readonly]{background:#f4f6f8;color:#455468}.field input.editable{background:#fff4b3}.field input.invalid{border-color:#be2525;background:#ffe4e4}.status{font-weight:700;padding:12px 14px;border-radius:7px;margin-top:12px}.ok{color:#156044;background:#e5f7ec}.bad{color:#a32424;background:#fff0ef}.neutral{color:#755a14;background:#fff7d6}.small{font-size:13px;color:#596579}.hint{margin-top:8px;color:#566273;font-size:13px}details{margin-top:14px}summary{cursor:pointer;font-weight:600}@media(max-width:700px){.editor{grid-template-columns:1fr}.card{padding:14px}.field input{width:135px}header{padding:20px 16px}}
+</style>
+</head>
+<body>
+<header><h1>BOSS Allocation Sandbox</h1><p>Fictional training example · Runs in your browser</p></header>
+<main>
+<div class="notice"><strong>Practice simulator only.</strong> Not connected to BOSS, an insurer, or Walmart. A balanced line does not establish that an allocation complies with a benefit authorization. Do not enter patient information.</div>
+<section class="card"><div class="toolbar">
+<button id="add">Add Line</button><button class="secondary" id="del">Delete Line</button><button class="secondary" id="resetline">Reset Line</button><button class="secondary" id="resetorder">Reset Order</button><button id="save">Save Practice Snapshot</button>
+</div><div class="scroll"><table aria-label="Practice allocation lines"><thead><tr><th>Description</th><th>Claim Retail</th><th>Markdown</th><th>Sales Credit</th><th>Insurance</th><th>Pt Copay</th><th>Pt Remaining</th><th>Pt Total</th></tr></thead><tbody id="rows"></tbody><tfoot id="totals"></tfoot></table></div><p class="small">Select a row to edit it. Changes appear in the table only after you click Update. “Save Practice Snapshot” downloads a JSON file to your computer; it does not submit an order.</p></section>
+<section class="card"><h2 id="editTitle">Allocation</h2><div class="editor"><div>
+<div class="field"><label for="retail">Claim Retail Amount</label><input id="retail" readonly></div>
+<div class="field"><label for="markdown">Markdown</label><input id="markdown" readonly></div>
+<div class="field"><label for="sales">Sales Credit After Markdown</label><input class="editable" id="sales" type="number" min="0" step="0.01"></div>
+</div><div>
+<div class="field"><label for="insurance">Primary Insurance Covered</label><input class="editable" id="insurance" type="number" min="0" step="0.01"></div>
+<div class="field"><label for="copay">Primary Pt Copay</label><input class="editable" id="copay" type="number" min="0" step="0.01"></div>
+<div class="field"><label for="remaining">Pt Remaining Balance</label><input class="editable" id="remaining" type="number" min="0" step="0.01"></div>
+</div></div>
+<div id="status" class="status neutral" role="status" aria-live="polite"></div><div class="toolbar" style="margin-top:14px"><button id="update">Update</button><button class="secondary" id="discard">Discard Unsaved Edits</button></div>
+<details><summary>Show formula and audit guidance</summary><p>For each line: <strong>Sales Credit After Markdown = Insurance Covered + Patient Copay + Patient Remaining Balance</strong>. Markdown = Claim Retail − Sales Credit. Patient Total = Copay + Remaining. Verify the entire order against eligibility, authorization, and current approved guidance; arithmetic alone is not enough.</p></details>
+</section></main>
+<script>
+'use strict';
+// All amounts stored as integer cents to avoid floating-point balance errors.
+const initial=[
+ {description:'Frame',retail:15000,sales:12000,insurance:6800,copay:2000,remaining:3200},
+ {description:'Right Lens',retail:5000,sales:4500,insurance:0,copay:0,remaining:4500},
+ {description:'Left Lens',retail:5000,sales:4500,insurance:0,copay:0,remaining:4500}
+];
+const clone=x=>JSON.parse(JSON.stringify(x));let lines=clone(initial),selected=0;
+const $=id=>document.getElementById(id);const money=c=>(c/100).toFixed(2);
+function parseCents(s){if(typeof s!=='string'||!/^\d+(?:\.\d{1,2})?$/.test(s.trim()))return null;const [whole,dec='']=s.trim().split('.');const n=Number(whole)*100+Number(dec.padEnd(2,'0'));return Number.isSafeInteger(n)?n:null;}
+function getDraft(){return {sales:parseCents($('sales').value),insurance:parseCents($('insurance').value),copay:parseCents($('copay').value),remaining:parseCents($('remaining').value)};}
+function evaluate(){const d=getDraft(),r=lines[selected].retail;const good=Object.values(d).every(v=>v!==null)&&d.sales<=r;const diff=good?d.sales-d.insurance-d.copay-d.remaining:null;const status=$('status');const valid=good&&diff===0;
+ $('markdown').value=d.sales===null||d.sales>r?'—':money(r-d.sales);
+ status.className='status '+(!good||diff!==0?'bad':'ok');
+ status.textContent=!good?'Enter valid, nonnegative amounts (up to retail for Sales Credit).':diff!==0?'Out of balance by $'+money(Math.abs(diff))+'. Adjust yellow fields before Update.':'Balanced mathematically. Check plan requirements separately.';
+ $('update').disabled=!valid;return {valid,d};}
+function render(){const tbody=$('rows');tbody.replaceChildren();const t={retail:0,markdown:0,sales:0,insurance:0,copay:0,remaining:0,patient:0};
+ lines.forEach((l,i)=>{const values=[l.description,l.retail,l.retail-l.sales,l.sales,l.insurance,l.copay,l.remaining,l.copay+l.remaining];const tr=document.createElement('tr');if(i===selected)tr.className='selected';tr.setAttribute('aria-selected',i===selected?'true':'false');values.forEach((v,j)=>{const td=document.createElement('td');td.textContent=j===0?v:money(v);tr.appendChild(td)});tr.addEventListener('click',()=>{selected=i;load()});tbody.appendChild(tr);t.retail+=l.retail;t.markdown+=l.retail-l.sales;t.sales+=l.sales;t.insurance+=l.insurance;t.copay+=l.copay;t.remaining+=l.remaining;t.patient+=l.copay+l.remaining});
+ const foot=$('totals');foot.replaceChildren();const tr=document.createElement('tr');['TOTAL',t.retail,t.markdown,t.sales,t.insurance,t.copay,t.remaining,t.patient].forEach((v,j)=>{const td=document.createElement('td');td.textContent=j===0?v:money(v);tr.appendChild(td)});foot.appendChild(tr);
+}
+function load(){const l=lines[selected];$('editTitle').textContent='Allocation — '+l.description;$('retail').value=money(l.retail);$('markdown').value=money(l.retail-l.sales);$('sales').value=money(l.sales);$('insurance').value=money(l.insurance);$('copay').value=money(l.copay);$('remaining').value=money(l.remaining);render();evaluate();}
+function update(){const {valid,d}=evaluate();if(!valid)return;Object.assign(lines[selected],d);load();$('status').textContent='Updated. Balanced mathematically; carrier correctness not verified.';}
+['sales','insurance','copay','remaining'].forEach(id=>$(id).addEventListener('input',evaluate));$('update').addEventListener('click',update);$('discard').addEventListener('click',load);$('resetline').addEventListener('click',()=>{const base=initial[selected];if(base){lines[selected]=clone(base)}else{lines[selected].sales=lines[selected].retail;lines[selected].insurance=0;lines[selected].copay=0;lines[selected].remaining=lines[selected].retail}load()});$('resetorder').addEventListener('click',()=>{if(confirm('Restore the original fictional practice order?')){lines=clone(initial);selected=0;load()}});
+$('add').addEventListener('click',()=>{const description=prompt('Practice line description (no patient data):','New Item');if(description===null)return;const retail=prompt('Claim retail amount (dollars):','25.00');if(retail===null)return;const cents=parseCents(retail);if(cents===null||cents>100000000){alert('Enter a valid nonnegative retail amount.');return}lines.push({description:description.trim().slice(0,80)||'New Item',retail:cents,sales:cents,insurance:0,copay:0,remaining:cents});selected=lines.length-1;load()});$('del').addEventListener('click',()=>{if(lines.length<=1){alert('At least one line is required.');return}lines.splice(selected,1);selected=Math.min(selected,lines.length-1);load()});
+$('save').addEventListener('click',()=>{const payload={type:'fictional-training-sandbox',version:1,lines:lines.map(l=>({...l,markdown:l.retail-l.sales,patientTotal:l.copay+l.remaining,balanced:l.sales===l.insurance+l.copay+l.remaining}))};const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='practice-allocation.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)});
+load();
+</script>
+</body></html>
